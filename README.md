@@ -81,6 +81,21 @@ go run . -search openssl config
 /etc/other/file
 /etc/foo/file
 /etc/bar
+/home/tests
+```
+
+or search in a specific directory:
+
+
+```bash
+go run . -dir /etc -search openssl config
+
+# output something like
+
+/etc/openssl/somefile.conf
+/etc/other/file
+/etc/foo/file
+/etc/bar
 ```
 
 **Removing folder**
