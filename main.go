@@ -5,23 +5,30 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
 )
 
+type Occourence struct {
+	filepath string
+	score    float32
+}
+
 type Tokens struct {
 	tokens map[string]int // map[term]frequency
 }
 
 type IndexDb struct {
-	globalTermFrequency   map[string]int            // map[term]frequency
-	documentTermFrequency map[string]map[string]int // map[document(filepath)]map[term]frequency
+	GlobalTermFrequency   map[string]int            `json:"globalTermFrequency"`   // map[term]frequency
+	DocumentTermFrequency map[string]map[string]int `json:"documentTermFrequency"` // map[document(filepath)]map[term]frequency
 }
 
 type Tree struct {
@@ -65,8 +72,8 @@ func newTree(root string, verbose bool) *Tree {
 		sync:           sync.WaitGroup{},
 		filesContentMu: sync.Mutex{},
 		indexDb: IndexDb{
-			globalTermFrequency:   make(map[string]int),
-			documentTermFrequency: make(map[string]map[string]int),
+			GlobalTermFrequency:   make(map[string]int),
+			DocumentTermFrequency: make(map[string]map[string]int),
 		},
 	}
 }
@@ -98,7 +105,7 @@ func isWhitespace(b byte) bool {
 }
 
 // tokenize Tokenizes the content and return the frequency of each token
-func (t *Tree) tokenize(content []byte) map[string]int {
+func tokenize(content []byte) map[string]int {
 	tokens := newTokens()
 
 	start := 0
@@ -116,6 +123,8 @@ func (t *Tree) tokenize(content []byte) map[string]int {
 			for isAlphaNumeric(content[cursor]) && cursor < size-1 {
 				cursor++
 			}
+
+			cursor++
 
 			token := string(content[start:cursor])
 
@@ -193,7 +202,7 @@ func (t *Tree) readFile(parent string, file os.DirEntry) {
 		fmt.Printf("Preparing \"%s\"\n", path)
 	}
 
-	tokens := t.tokenize(content)
+	tokens := tokenize(content)
 
 	t.indexDocument(path, tokens)
 
@@ -205,13 +214,13 @@ func (t *Tree) indexDocument(path string, termFrequency map[string]int) {
 		fmt.Printf("Indexing \"%s\"\n", path)
 	}
 
-	t.indexDb.documentTermFrequency[path] = termFrequency
+	t.indexDb.DocumentTermFrequency[path] = termFrequency
 
 	for k, v := range termFrequency {
-		if count, ok := t.indexDb.globalTermFrequency[k]; ok {
-			t.indexDb.globalTermFrequency[k] = count + v
+		if count, ok := t.indexDb.GlobalTermFrequency[k]; ok {
+			t.indexDb.GlobalTermFrequency[k] = count + v
 		} else {
-			t.indexDb.globalTermFrequency[k] = v
+			t.indexDb.GlobalTermFrequency[k] = v
 		}
 	}
 
@@ -280,16 +289,70 @@ func (t *Tree) readFiles() {
 
 	if t.filesCount > 0 {
 		fmt.Printf("%d files indexed successfully\n", t.filesCount)
-		fmt.Printf("%d tokens indexed\n", len(t.indexDb.globalTermFrequency))
+		fmt.Printf("%d tokens indexed\n", len(t.indexDb.GlobalTermFrequency))
 	} else {
 		fmt.Println("no files indexed")
 	}
+}
+
+func (t *Tree) Save() {
+	bytes, err := json.Marshal(t.indexDb)
+
+	if err != nil {
+		perror("%s", err.Error())
+	}
+
+	file, err := os.OpenFile("db.json", os.O_WRONLY|os.O_CREATE, 0600)
+
+	if err != nil {
+		perror("%s", err.Error())
+	}
+
+	defer file.Close()
+
+	file.Write(bytes)
 }
 
 func usage(exitcode int) {
 	flag.Usage()
 
 	os.Exit(exitcode)
+}
+
+func searchTerm(term string, db IndexDb, top int) []Occourence {
+	tokens := tokenize([]byte(term))
+	occourences := make([]Occourence, 0, len(db.DocumentTermFrequency))
+
+	for document, docFreq := range db.DocumentTermFrequency {
+		var score float32 = 0
+
+		for token := range tokens {
+			if freq, ok := docFreq[token]; ok {
+				score += float32(freq) / float32(db.GlobalTermFrequency[token])
+			}
+		}
+
+		if score <= 0 {
+			continue
+		}
+
+		occourences = append(occourences, Occourence{
+			filepath: document,
+			score:    score,
+		})
+	}
+
+	if len(occourences) == 0 {
+		return nil
+	}
+
+	sort.Slice(occourences, func(i, j int) bool {
+		return occourences[i].score >= occourences[j].score
+	})
+
+	top = min(top, len(occourences))
+
+	return occourences[:top]
 }
 
 func perror(format string, a ...any) {
@@ -301,6 +364,7 @@ func perror(format string, a ...any) {
 func main() {
 	folder := flag.String("in", "", "-in . # this will make the tool index the current directory")
 	verbose := flag.Bool("v", false, "verbose output")
+	search := flag.String("sc", "", "-sc \"your search here...\"")
 
 	flag.Parse()
 
@@ -322,6 +386,31 @@ func main() {
 		perror("\"%s\" is not a directory", *folder)
 	}
 
+	if *search != "" {
+		content, err := os.ReadFile("db.json")
+
+		if err != nil {
+			perror("%s\n", err.Error())
+		}
+
+		var db IndexDb
+
+		json.Unmarshal(content, &db)
+
+		occourences := searchTerm(*search, db, 10)
+
+		if occourences == nil {
+			fmt.Println("no files found")
+			return
+		}
+
+		for i, occourence := range occourences {
+			fmt.Printf("%02d %f %s\n", i+1, occourence.score, occourence.filepath)
+		}
+
+		return
+	}
+
 	t := newTree(*folder, *verbose)
 
 	start := time.Now()
@@ -329,6 +418,8 @@ func main() {
 	t.readFiles()
 
 	elapsed := time.Since(start)
+
+	t.Save()
 
 	if t.verbose {
 		fmt.Printf("Time taken: %s\n", elapsed)
