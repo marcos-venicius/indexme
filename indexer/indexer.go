@@ -17,9 +17,9 @@ type Indexer struct {
 }
 
 func NewIndexer(baseDirectory string) *Indexer {
-  // TODO: create a new connection with the sqlite database
-  // TODO: check if the baseDirectory has never indexed before
-  // TODO: add the baseDirectory to the database
+	// TODO: create a new connection with the sqlite database
+	// TODO: check if the baseDirectory has never indexed before
+	// TODO: add the baseDirectory to the database
 
 	return &Indexer{
 		verboseOutput:      false,
@@ -52,7 +52,7 @@ func (i *Indexer) IgnoreFileName(fileName string) *Indexer {
 }
 
 func (i *Indexer) Index() error {
-  // TODO: close the connection with the database using defer
+	// TODO: close the connection with the database using defer
 
 	abs, err := absolutePath(i.baseDirectory)
 
@@ -66,9 +66,9 @@ func (i *Indexer) Index() error {
 
 	i.indexFoldersSync.Wait()
 
-  if i.verboseOutput {
-    fmt.Println()
-  }
+	if i.verboseOutput {
+		fmt.Println()
+	}
 
 	fmt.Printf("%d files ignored\n", i.ignoredFiles)
 	fmt.Printf("%d folders ignored\n", i.ignoredFolders)

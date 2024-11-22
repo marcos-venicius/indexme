@@ -16,9 +16,9 @@ func main() {
 
 	idx := indexer.NewIndexer(*folder).IgnoreFolderName(".git").IgnoreFolderName(".idea").IgnoreFolderName("venv")
 
-  if *verbose {
-    idx.SetVerboseMode()
-  }
+	if *verbose {
+		idx.SetVerboseMode()
+	}
 
 	err := idx.Index()
 

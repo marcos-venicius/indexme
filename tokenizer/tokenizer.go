@@ -63,7 +63,7 @@ outer:
 			continue
 		}
 
-    tmp := c
+		tmp := c
 
 		if c == tmp {
 			for c == tmp && c != '\000' {
@@ -83,7 +83,7 @@ outer:
 
 			tokens = append(tokens, token)
 		} else {
-      chars = append(chars, c)
+			chars = append(chars, c)
 
 			token := strings.ToLower(string(chars))
 

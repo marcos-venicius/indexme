@@ -62,11 +62,7 @@ func (i *Indexer) indexFile(abspath string) {
 		return
 	}
 
-	if i.verboseOutput {
-		fmt.Printf("Indexing file \"%s\"\n", abspath)
-	}
-
-	file, err := os.OpenFile(abspath, os.O_RDONLY, 0600)
+	isBinary, err := isBinaryFile(abspath)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not read file \"%s\": %s\n", abspath, err)
@@ -74,11 +70,33 @@ func (i *Indexer) indexFile(abspath string) {
 		return
 	}
 
+	if isBinary {
+		if i.verboseOutput {
+			fmt.Printf("Ignoring binary file \"%s\"\n", abspath)
+		}
+
+		return
+	}
+
+	if i.verboseOutput {
+		fmt.Printf("Indexing file \"%s\"\n", abspath)
+	}
+
+	file, err := os.Open(abspath)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not read file \"%s\": %s\n", abspath, err)
+
+		return
+	}
+
+	defer file.Close()
+
 	tokens := tokenizer.Tokenize(file)
 
-  // TODO: get tokens frequency to this document
-  // TODO: update global term frequency for this base path
-  // TODO: insert this tokens frequency in the database
+	// TODO: get tokens frequency to this document
+	// TODO: update global term frequency for this base path
+	// TODO: insert this tokens frequency in the database
 
 	i.indexedFiles++
 
