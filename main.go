@@ -14,13 +14,22 @@ func main() {
 
 	flag.Parse()
 
-	idx := indexer.NewIndexer(*folder).IgnoreFolderName(".git").IgnoreFolderName(".idea").IgnoreFolderName("venv")
+	idx, err := indexer.NewIndexer(*folder)
+
+	if err != nil {
+		fmt.Printf("Could not initialize the indexer: %s\n", err)
+		return
+	}
+
+	idx.IgnoreFolderName(".git").IgnoreFolderName(".idea").IgnoreFolderName("venv")
 
 	if *verbose {
 		idx.SetVerboseMode()
 	}
 
-	err := idx.Index()
+	defer idx.Close()
+
+	err = idx.Index()
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)

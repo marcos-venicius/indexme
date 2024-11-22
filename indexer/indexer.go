@@ -1,8 +1,13 @@
 package indexer
 
 import (
+	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type Indexer struct {
@@ -14,14 +19,28 @@ type Indexer struct {
 	ignoredFolders     int
 	indexedFiles       int
 	indexFoldersSync   sync.WaitGroup
+	db                 *sql.DB
 }
 
-func NewIndexer(baseDirectory string) *Indexer {
-	// TODO: create a new connection with the sqlite database
+func NewIndexer(baseDirectory string) (*Indexer, error) {
 	// TODO: check if the baseDirectory has never indexed before
 	// TODO: add the baseDirectory to the database
 
-	return &Indexer{
+	homedir, err := os.UserHomeDir()
+
+	if err != nil {
+		panic(err)
+	}
+
+	databaseLocation := filepath.Join(homedir, "indexme.db")
+
+	db, err := sql.Open("sqlite3", databaseLocation)
+
+	if err != nil {
+		return nil, err
+	}
+
+	indexer := &Indexer{
 		verboseOutput:      false,
 		baseDirectory:      baseDirectory,
 		ignoredFileNames:   make(map[string]struct{}, 0),
@@ -30,7 +49,22 @@ func NewIndexer(baseDirectory string) *Indexer {
 		ignoredFolders:     0,
 		indexedFiles:       0,
 		indexFoldersSync:   sync.WaitGroup{},
+		db:                 db,
 	}
+
+	err = indexer.DbSetup()
+
+	if err != nil {
+		defer db.Close()
+
+		return nil, err
+	}
+
+	return indexer, nil
+}
+
+func (i *Indexer) Close() {
+	defer i.db.Close()
 }
 
 func (i *Indexer) SetVerboseMode() *Indexer {
