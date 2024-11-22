@@ -104,53 +104,6 @@ func isWhitespace(b byte) bool {
 	return rune(b) == '\t' || rune(b) == '\n' || rune(b) == ' ' || rune(b) == '\r'
 }
 
-// tokenize Tokenizes the content and return the frequency of each token
-func tokenize(content []byte) map[string]int {
-	tokens := newTokens()
-
-	start := 0
-	cursor := 0
-	size := len(content)
-
-	for cursor < size-1 {
-		for isWhitespace(content[cursor]) && cursor < size-1 {
-			cursor++
-		}
-
-		start = cursor
-
-		if isAlphaNumeric(content[cursor]) {
-			for isAlphaNumeric(content[cursor]) && cursor < size-1 {
-				cursor++
-			}
-
-			cursor++
-
-			token := string(content[start:cursor])
-
-			tokens.add(token)
-			continue
-		}
-
-		c := content[cursor]
-
-		cursor++
-
-		if cursor < size && content[cursor] == c {
-			for c == content[cursor] && cursor < size-1 {
-				cursor++
-			}
-
-			tokens.add(string(content[start:cursor]))
-
-		} else {
-			tokens.add(string(content[start:cursor]))
-		}
-	}
-
-	return tokens.tokens
-}
-
 // this function checks if the first line has valid utf8 chars, if not, it's considered a binary  file
 func isBinaryFile(path string) (bool, error) {
 	file, err := os.Open(path)
@@ -204,7 +157,13 @@ func (t *Tree) readFile(parent string, file os.DirEntry) {
 
 	tokens := tokenize(content)
 
-	t.indexDocument(path, tokens)
+	docFreq := newTokens()
+
+	for _, token := range tokens {
+		docFreq.add(token)
+	}
+
+	t.indexDocument(path, docFreq.tokens)
 
 	t.filesCount++
 }
@@ -320,13 +279,33 @@ func usage(exitcode int) {
 }
 
 func searchTerm(term string, db IndexDb, top int) []Occourence {
-	tokens := tokenize([]byte(term))
+	allTokens := tokenize([]byte(term))
 	occourences := make([]Occourence, 0, len(db.DocumentTermFrequency))
+	tokens := make([]string, 0, len(allTokens))
+
+	println("finding tokens")
+  fmt.Println(len(db.GlobalTermFrequency))
+	for k := range db.GlobalTermFrequency {
+		fmt.Println(k)
+	}
+
+	// check if at least one token exists
+	for _, token := range allTokens {
+		if _, ok := db.GlobalTermFrequency[token]; ok {
+			tokens = append(tokens, token)
+		}
+	}
+
+	println("done")
+
+	if len(tokens) == 0 {
+		return nil
+	}
 
 	for document, docFreq := range db.DocumentTermFrequency {
 		var score float32 = 0
 
-		for token := range tokens {
+		for _, token := range tokens {
 			if freq, ok := docFreq[token]; ok {
 				score += float32(freq) / float32(db.GlobalTermFrequency[token])
 			}
@@ -395,7 +374,11 @@ func main() {
 
 		var db IndexDb
 
-		json.Unmarshal(content, &db)
+    err = json.Unmarshal(content, &db)
+
+    if err != nil {
+      perror("%s\n", err.Error())
+    }
 
 		occourences := searchTerm(*search, db, 10)
 
