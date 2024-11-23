@@ -1,5 +1,7 @@
 package indexer
 
+import "database/sql"
+
 type FolderTable struct {
 	id             int
 	name           string
@@ -24,14 +26,20 @@ func (i *Indexer) CreateFolder(name, abspath string) error {
 	return nil
 }
 
-func (i *Indexer) GetFolderByAbsPath(path string) FolderTable {
+func (i *Indexer) GetFolderByAbsPath(path string) *FolderTable {
 	const getFolderByAbsPathQuery = `SELECT id, name, abs_path, documents_count FROM folder where abs_path = ?;`
 
 	row := i.db.QueryRow(getFolderByAbsPathQuery, path)
 
-	folder := FolderTable{}
+	folder := &FolderTable{}
 
-	row.Scan(&folder.id, &folder.name, &folder.abspath, &folder.documentsCount)
+  err := row.Scan(&folder.id, &folder.name, &folder.abspath, &folder.documentsCount)
+
+  if err == sql.ErrNoRows {
+    return nil
+  } else if err != nil {
+    panic(err)
+  }
 
 	return folder
 }

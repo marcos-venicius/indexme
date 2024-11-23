@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -101,6 +102,10 @@ func (i *Indexer) Index() error {
 	if err != nil {
 		return err
 	}
+
+  if folder := i.GetFolderByAbsPath(abs); folder != nil {
+    return errors.New("You already indexed this folder")
+  }
 
 	i.abspath = abs
 
