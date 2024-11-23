@@ -1,71 +1,95 @@
 package indexer
 
-const createFolderTable = `
-  CREATE TABLE IF NOT EXISTS folder (
-    id INTEGER NOT NULL PRIMARY KEY,
-    name TEXT NOT NULL,
-    abs_path TEXT NOT NULL,
-    documents_count INTEGER NOT NULL DEFAULT 0
-  );
-`
+type FolderTable struct {
+	id             int
+	name           string
+	abspath        string
+	documentsCount int
+}
 
-const createFolderTermsFrequencyTable = `
-  CREATE TABLE IF NOT EXISTS folder_terms_frequency (
-    id INTEGER NOT NULL PRIMARY KEY,
-    folder_id INTEGER NOT NULL,
-    token TEXT NOT NULL,
-    frequency INTEGER NOT NULL DEFAULT 0,
-    
-    FOREIGN KEY(folder_id) REFERENCES folder(id)
-  );
-`
+type FolderTermsFrequencyTable struct {
+	id       int
+	folderId int
+	token    string
+	frequeny int
+}
 
-const createDocumentTermsFrequencyTable = `
-  CREATE TABLE IF NOT EXISTS document_terms_frequency (
-    id INTEGER NOT NULL PRIMARY KEY,
-    abs_path TEXT NOT NULL,
-    folder_id INTEGER NOT NULL,
-    token TEXT NOT NULL,
-    frequency INTEGER NOT NULL DEFAULT 0,
+func (i *Indexer) CreateFolder(name, abspath string) error {
+	const createFolderQuery = `INSERT INTO folder (name, abs_path) VALUES(?,?)`
 
-    FOREIGN KEY(folder_id) REFERENCES folder(id)
-  );
-`
-
-const createFolderIndexes = `
-  CREATE INDEX IF NOT EXISTS idx_folder_abs_path ON folder(abs_path);
-`
-
-const createFolderTermsFrequencyIndexes = `
-  CREATE INDEX IF NOT EXISTS idx_folder_terms_frequency_token ON folder_terms_frequency(token);
-`
-
-const createDocumentTermsFrequencyIndexes = `
-  CREATE INDEX IF NOT EXISTS idx_document_terms_frequency_token ON document_terms_frequency(token);
-`
-
-func (i *Indexer) DbSetup() error {
-	if _, err := i.db.Exec(createFolderTable); err != nil {
+	if _, err := i.db.Exec(createFolderQuery, name, abspath); err != nil {
 		return err
 	}
 
-	if _, err := i.db.Exec(createFolderTermsFrequencyTable); err != nil {
+	return nil
+}
+
+func (i *Indexer) GetFolderByAbsPath(path string) FolderTable {
+	const getFolderByAbsPathQuery = `SELECT id, name, abs_path, documents_count FROM folder where abs_path = ?;`
+
+	row := i.db.QueryRow(getFolderByAbsPathQuery, path)
+
+	folder := FolderTable{}
+
+	row.Scan(&folder.id, &folder.name, &folder.abspath, &folder.documentsCount)
+
+	return folder
+}
+
+func (i *Indexer) GetFolderTermsFrequency(abspath string) map[string]int {
+	frequency := make(map[string]int)
+
+	folder := i.GetFolderByAbsPath(abspath)
+
+	const getFolderTermsFrequencyQuery = `SELECT * FROM folder_terms_frequency WHERE folder_id = ?;`
+
+	rows, err := i.db.Query(getFolderTermsFrequencyQuery, folder.id)
+
+	if err != nil {
+		panic(err)
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		termsFrequency := FolderTermsFrequencyTable{}
+
+		err := rows.Scan(&termsFrequency.id, &termsFrequency.folderId, &termsFrequency.token, &termsFrequency.frequeny)
+
+		if err != nil {
+			panic(err)
+		}
+
+		if count, ok := frequency[termsFrequency.token]; ok {
+			frequency[termsFrequency.token] = count + termsFrequency.frequeny
+		} else {
+			frequency[termsFrequency.token] = termsFrequency.frequeny
+		}
+	}
+
+	return frequency
+}
+
+func (i *Indexer) AddFolderTermsFrequency(folderId int, token string, frequency int) error {
+	const createDocumentTermsFrequencyQuery = `
+    INSERT INTO folder_terms_frequency (folder_id, token, frequency)
+    VALUES (?, ?, ?);
+  `
+
+	if _, err := i.db.Exec(createDocumentTermsFrequencyQuery, folderId, token, frequency); err != nil {
 		return err
 	}
 
-	if _, err := i.db.Exec(createDocumentTermsFrequencyTable); err != nil {
-		return err
-	}
+	return nil
+}
 
-	if _, err := i.db.Exec(createFolderIndexes); err != nil {
-		return err
-	}
+func (i *Indexer) AddDocumentTermsFrequency(absPath string, folderId int, token string, frequency int) error {
+	const createDocumentTermsFrequencyQuery = `
+    INSERT INTO document_terms_frequency (abs_path, folder_id, token, frequency)
+    VALUES (?, ?, ?, ?);
+  `
 
-	if _, err := i.db.Exec(createFolderTermsFrequencyIndexes); err != nil {
-		return err
-	}
-
-	if _, err := i.db.Exec(createDocumentTermsFrequencyIndexes); err != nil {
+	if _, err := i.db.Exec(createDocumentTermsFrequencyQuery, absPath, folderId, token, frequency); err != nil {
 		return err
 	}
 

@@ -27,8 +27,6 @@ func main() {
 		idx.SetVerboseMode()
 	}
 
-	defer idx.Close()
-
 	err = idx.Index()
 
 	if err != nil {

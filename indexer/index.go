@@ -93,10 +93,14 @@ func (i *Indexer) indexFile(abspath string) {
 	defer file.Close()
 
 	tokens := tokenizer.Tokenize(file)
+	folder := i.GetFolderByAbsPath(i.abspath)
 
-	// TODO: get tokens frequency to this document
-	// TODO: update global term frequency for this base path
-	// TODO: insert this tokens frequency in the database
+	documentTermsFrequency := getFrequency(tokens)
+
+	for token, freq := range documentTermsFrequency {
+		i.addTokenToFolderTermsFrequency(token, freq)
+		i.AddDocumentTermsFrequency(abspath, folder.id, token, freq)
+	}
 
 	i.indexedFiles++
 

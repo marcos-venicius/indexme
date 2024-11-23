@@ -11,15 +11,17 @@ import (
 )
 
 type Indexer struct {
-	verboseOutput      bool
-	baseDirectory      string
-	ignoredFileNames   map[string]struct{}
-	ignoredFolderNames map[string]struct{}
-	ignoredFiles       int
-	ignoredFolders     int
-	indexedFiles       int
-	indexFoldersSync   sync.WaitGroup
-	db                 *sql.DB
+	verboseOutput        bool
+	baseDirectory        string
+	ignoredFileNames     map[string]struct{}
+	ignoredFolderNames   map[string]struct{}
+	ignoredFiles         int
+	ignoredFolders       int
+	indexedFiles         int
+	indexFoldersSync     sync.WaitGroup
+	abspath              string
+	db                   *sql.DB
+	folderTermsFrequency map[string]int
 }
 
 func NewIndexer(baseDirectory string) (*Indexer, error) {
@@ -41,15 +43,17 @@ func NewIndexer(baseDirectory string) (*Indexer, error) {
 	}
 
 	indexer := &Indexer{
-		verboseOutput:      false,
-		baseDirectory:      baseDirectory,
-		ignoredFileNames:   make(map[string]struct{}, 0),
-		ignoredFolderNames: make(map[string]struct{}, 0),
-		ignoredFiles:       0,
-		ignoredFolders:     0,
-		indexedFiles:       0,
-		indexFoldersSync:   sync.WaitGroup{},
-		db:                 db,
+		verboseOutput:        false,
+		baseDirectory:        baseDirectory,
+		ignoredFileNames:     make(map[string]struct{}, 0),
+		ignoredFolderNames:   make(map[string]struct{}, 0),
+		ignoredFiles:         0,
+		ignoredFolders:       0,
+		indexedFiles:         0,
+		indexFoldersSync:     sync.WaitGroup{},
+		abspath:              "",
+		db:                   db,
+		folderTermsFrequency: make(map[string]int),
 	}
 
 	err = indexer.DbSetup()
@@ -63,8 +67,12 @@ func NewIndexer(baseDirectory string) (*Indexer, error) {
 	return indexer, nil
 }
 
-func (i *Indexer) Close() {
-	defer i.db.Close()
+func (i *Indexer) addTokenToFolderTermsFrequency(token string, freq int) {
+	if count, ok := i.folderTermsFrequency[token]; ok {
+		i.folderTermsFrequency[token] += count + freq
+	} else {
+		i.folderTermsFrequency[token] = freq
+	}
 }
 
 func (i *Indexer) SetVerboseMode() *Indexer {
@@ -86,7 +94,7 @@ func (i *Indexer) IgnoreFileName(fileName string) *Indexer {
 }
 
 func (i *Indexer) Index() error {
-	// TODO: close the connection with the database using defer
+	defer i.db.Close()
 
 	abs, err := absolutePath(i.baseDirectory)
 
@@ -94,11 +102,25 @@ func (i *Indexer) Index() error {
 		return err
 	}
 
+	i.abspath = abs
+
+	base := filepath.Base(abs)
+
+	if err := i.CreateFolder(base, abs); err != nil {
+		return nil
+	}
+
 	i.indexFoldersSync.Add(1)
 
 	go i.indexFolder(abs)
 
 	i.indexFoldersSync.Wait()
+
+	folder := i.GetFolderByAbsPath(i.abspath)
+
+	for token, freq := range i.folderTermsFrequency {
+		i.AddFolderTermsFrequency(folder.id, token, freq)
+	}
 
 	if i.verboseOutput {
 		fmt.Println()
