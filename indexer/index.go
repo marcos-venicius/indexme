@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -92,7 +93,9 @@ func (i *Indexer) indexFile(abspath string) {
 
 	defer file.Close()
 
-	tokens := tokenizer.Tokenize(file)
+	reader := bufio.NewReader(file)
+
+	tokens := tokenizer.Tokenize(reader)
 	folder := i.GetFolderByAbsPath(i.abspath)
 
 	documentTermsFrequency := getFrequency(tokens)

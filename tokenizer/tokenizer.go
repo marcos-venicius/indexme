@@ -3,7 +3,6 @@ package tokenizer
 import (
 	"bufio"
 	"io"
-	"os"
 	"strings"
 )
 
@@ -19,10 +18,8 @@ func chr(reader *bufio.Reader) rune {
 	return c
 }
 
-func Tokenize(file *os.File) []string {
+func Tokenize(reader *bufio.Reader) []string {
 	tokens := make([]string, 0)
-
-	reader := bufio.NewReader(file)
 
 	c := chr(reader)
 

@@ -1,13 +1,17 @@
 package indexer
 
 import (
+	"bufio"
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
+	"github.com/marcos-venicius/indexme/tokenizer"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -23,6 +27,11 @@ type Indexer struct {
 	abspath              string
 	db                   *sql.DB
 	folderTermsFrequency map[string]int
+}
+
+type IndexedDocument struct {
+	Path  string
+	Score float32
 }
 
 func NewIndexer(baseDirectory string) (*Indexer, error) {
@@ -43,6 +52,14 @@ func NewIndexer(baseDirectory string) (*Indexer, error) {
 		return nil, err
 	}
 
+	abs, err := absolutePath(baseDirectory)
+
+	if err != nil {
+		defer db.Close()
+
+		return nil, err
+	}
+
 	indexer := &Indexer{
 		verboseOutput:        false,
 		baseDirectory:        baseDirectory,
@@ -52,7 +69,7 @@ func NewIndexer(baseDirectory string) (*Indexer, error) {
 		ignoredFolders:       0,
 		indexedFiles:         0,
 		indexFoldersSync:     sync.WaitGroup{},
-		abspath:              "",
+		abspath:              abs,
 		db:                   db,
 		folderTermsFrequency: make(map[string]int),
 	}
@@ -97,27 +114,19 @@ func (i *Indexer) IgnoreFileName(fileName string) *Indexer {
 func (i *Indexer) Index() error {
 	defer i.db.Close()
 
-	abs, err := absolutePath(i.baseDirectory)
-
-	if err != nil {
-		return err
+	if folder := i.GetFolderByAbsPath(i.abspath); folder != nil {
+		return errors.New("You already indexed this folder")
 	}
 
-  if folder := i.GetFolderByAbsPath(abs); folder != nil {
-    return errors.New("You already indexed this folder")
-  }
+	base := filepath.Base(i.abspath)
 
-	i.abspath = abs
-
-	base := filepath.Base(abs)
-
-	if err := i.CreateFolder(base, abs); err != nil {
+	if err := i.CreateFolder(base, i.abspath); err != nil {
 		return nil
 	}
 
 	i.indexFoldersSync.Add(1)
 
-	go i.indexFolder(abs)
+	go i.indexFolder(i.abspath)
 
 	i.indexFoldersSync.Wait()
 
@@ -136,4 +145,47 @@ func (i *Indexer) Index() error {
 	fmt.Printf("%d indexed files\n", i.indexedFiles)
 
 	return nil
+}
+
+func (i *Indexer) Search(term string, top int) ([]IndexedDocument, error) {
+	var folder *FolderTable
+
+	if folder = i.GetFolderByAbsPath(i.abspath); folder == nil {
+		return nil, errors.New("Please, before search index this folder!")
+	}
+
+	bytesReader := bytes.NewReader([]byte(term))
+	reader := bufio.NewReader(bytesReader)
+
+	tokens := tokenizer.Tokenize(reader)
+
+	results := make([]IndexedDocument, 0)
+
+	folderTermsFrequency := i.GetFolderTermsFrequency(i.abspath)
+	documentTermsFrequency := i.GetDocumentTermsFrequency(folder.id)
+
+	for document, docFreq := range documentTermsFrequency {
+		var score float32 = 0
+
+		for _, token := range tokens {
+			if freq, ok := docFreq[token]; ok {
+				score += float32(freq) / float32(folderTermsFrequency[token])
+			}
+		}
+
+		if score <= 0 {
+			continue
+		}
+
+		results = append(results, IndexedDocument{
+			Path:  document,
+			Score: score,
+		})
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Score > results[j].Score
+	})
+
+	return results[:min(top, len(results))], nil
 }
