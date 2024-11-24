@@ -1,5 +1,8 @@
 # IndexMe
 
+> [!WARNING]
+> It's a working in progress and study case only
+
 Pass a directory to the program then index all the sub directory files.
 
 The first implementation will be using only TF-IDF technique.
